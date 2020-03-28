@@ -1,0 +1,8 @@
+.vscode/
+.ipynb_checkpoints/
+
+__pycache__/
+
+*.code-workspace
+temp/
+animated_from_images.gif
