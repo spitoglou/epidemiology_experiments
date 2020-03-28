@@ -4,11 +4,14 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import random
 from helpers import proba_threshold, characterize
+from loguru import logger
 
 
 class Model:
 
-    def __init__(self, parameters):
+    def __init__(self, parameters, only_infected=True, story=False):
+        self.story = story
+        self.only_infected = only_infected
         self.n = parameters['population']
         self.num_infected = parameters['initial_infected']
         self.contacts = parameters['contacts']
@@ -70,6 +73,10 @@ class Model:
         self.snapshot()
 
     def snapshot(self):
+        if self.story:
+            print('At this point we have {} Susceptible,'
+                  '{} Infected and {} Recovered individuals in the population!'.format(
+                      self.stats[0], self.stats[1], self.stats[2]))
         self.progression_dict[self.iteration_counter] = self.stats
         self.progression_dict2[self.iteration_counter] = {
             'Susceptible': self.stats[0],
@@ -79,57 +86,85 @@ class Model:
 
     def iterate(self):
         self.iteration_counter += 1
+        logger.info(self.iteration_counter)
+        if self.story:
+            print('We are now in Iteration no {}'.format(self.iteration_counter))
         # create an immutable copy of the initial array
         # in order to compare later and increase days in the same condition
         immutable = self.state.copy()
+        after = self.state.copy()
 
         # one iteration
         for i, item in enumerate(self.state):
+            state_per = item[0]
+            if state_per != 1 and self.only_infected:
+                continue
             if self.verbose > 0:
                 print(i, item, characterize(item[0]))
+
+            if self.story:
+                print(
+                    'Let\'s see what individual no {} will do in this iteration'.format(i))
 
             # get [contacts] random persons after removing self
             contacts_index = self.get_contacts(i)
 
             # process contacts
             for con in contacts_index:
+                state_con = after[con][0]
+                if self.story:
+                    print('He meets with {} who is {}'.format(
+                        con, characterize(state_con)))
                 if self.verbose > 0:
                     print('contact with {} who is {}'.format(
-                        con, characterize(self.state[con][0])))
-                state_per = item[0]
-                state_con = self.state[con][0]
+                        con, characterize(state_con)))
 
                 new_state_per = state_per
                 new_state_con = state_con
                 if state_per == 1 and state_con == 0:
                     if proba_threshold(self.probability_of_infection):
                         new_state_con = 1
+                        if self.story:
+                            print('{} is unlucky and {} infects him'.format(con, i))
+                    else:
+                        if self.story:
+                            print(
+                                '{} is lucky and {} doen not infects him'.format(con, i))
                 if state_per == 0 and state_con == 1:
                     if proba_threshold(self.probability_of_infection):
                         new_state_per = 1
+                        if self.story:
+                            print('{} is unlucky and {} infects him'.format(i, con))
+                    else:
+                        if self.story:
+                            print(
+                                '{} is lucky and {} doen not infects him'.format(i, con))
 
-                self.state[i][0] = new_state_per
-                self.state[con][0] = new_state_con
+                after[i][0] = new_state_per
+                after[con][0] = new_state_con
                 if self.verbose > 1:
-                    print(self.state)
+                    print(after)
 
         # compare each item with immutable copy
         # if change of state set iteration counter back to zero
         # else raise by one
-        for i, item in enumerate(self.state):
+        for i, item in enumerate(after):
             # print(i, item[0], immutable[i][0])
             if item[0] == immutable[i][0]:
-                self.state[i][1] += 1
+                after[i][1] += 1
             else:
-                self.state[i][1] = 0
+                after[i][1] = 0
 
             # recovery
             if item[0] == 1 and item[1] >= self.ttr:
-                self.state[i][0] = 2
-                self.state[i][1] = 0
+                if self.story:
+                    print('{} recovers after {} days of infection'.format(i, self.ttr))
+                after[i][0] = 2
+                after[i][1] = 0
 
         if self.verbose > 1:
-            print(self.state)
+            print(after)
+        self.state = after.copy()
         self.update_stats()
 
     def plot1(self):
@@ -144,6 +179,7 @@ class Model:
         plt.figure(figsize=(8, 6))
         plt.scatter(x, y, c=self.state[:, 0], cmap=cmap)
         plt.show()
+        plt.close()
 
     def plot2(self):
         cmap = mpl.colors.ListedColormap(['blue', 'orange', 'green'])
@@ -160,8 +196,11 @@ class Model:
         plt.pcolormesh(x, y, arr, cmap=cmap, norm=norm)
         plt.colorbar()
         plt.savefig('temp/{:03d}.png'.format(self.iteration_counter))
-        plt.show()
+        # plt.show()
+        plt.close()
 
     def plot_progression(self):
         df = pd.DataFrame.from_dict(self.progression_dict2, orient='index')
         df.plot()
+        plt.show()
+        plt.close()
